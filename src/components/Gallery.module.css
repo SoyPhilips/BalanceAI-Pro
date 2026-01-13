@@ -1,0 +1,45 @@
+.gallery {
+    padding: var(--spacing-xl) var(--spacing-md);
+    background: var(--color-bg);
+    text-align: center;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.title {
+    font-size: 2.5rem;
+    margin-bottom: var(--spacing-lg);
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--spacing-md);
+}
+
+.imageCard {
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    aspect-ratio: 16/9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+    font-size: 1.25rem;
+    position: relative;
+    transition: transform var(--transition-normal);
+}
+
+.imageCard:hover {
+    transform: scale(1.02);
+    border-color: var(--color-primary);
+}
+
+.imageCard::after {
+    content: 'Screenshot Placeholder';
+}
