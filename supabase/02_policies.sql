@@ -30,6 +30,16 @@ create policy "Users can create custom foods"
   on foods for insert
   with check ( auth.uid() = created_by );
 
+-- Users can update their own custom foods
+create policy "Users can update own custom foods"
+  on foods for update
+  using ( auth.uid() = created_by );
+
+-- Users can delete their own custom foods
+create policy "Users can delete own custom foods"
+  on foods for delete
+  using ( auth.uid() = created_by );
+
 -- RECIPES POLICIES
 -- Everyone can read recipes
 create policy "Recipes are viewable by everyone"
