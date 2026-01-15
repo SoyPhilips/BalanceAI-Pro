@@ -59,6 +59,7 @@ create table public.daily_logs (
   protein numeric default 0,
   carbs numeric default 0,
   fat numeric default 0,
+  healthy_tips text,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 

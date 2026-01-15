@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { supabase } from '../supabaseClient';
+import { useUser } from '../context/UserContext';
 import styles from './AnalyzeView.module.css';
 
 const AnalyzeView = () => {
@@ -9,10 +11,20 @@ const AnalyzeView = () => {
     const [result, setResult] = useState(null);
     const [error, setError] = useState(null);
     const [mealType, setMealType] = useState('breakfast');
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveSuccess, setSaveSuccess] = useState(false);
+    const { user } = useUser();
 
     const handleImageUpload = (e) => {
         const file = e.target.files[0];
         if (file) {
+            // Validar tipo de archivo
+            const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+            if (!validTypes.includes(file.type)) {
+                setError("Formato de imagen no compatible. Por favor usa JPG, PNG o WebP (los GIFs no son compatibles).");
+                return;
+            }
+
             setImage(file);
             setPreviewUrl(URL.createObjectURL(file));
             setResult(null);
@@ -28,35 +40,72 @@ const AnalyzeView = () => {
 
         try {
             const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
+
             if (!apiKey) {
                 throw new Error("API Key is missing. Please check your .env file and restart the server.");
             }
 
             const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
             const reader = new FileReader();
             reader.readAsDataURL(image);
             reader.onloadend = async () => {
                 const base64Data = reader.result.split(',')[1];
+                const prompt = "Analyze this image of food. Identify the dish and estimate the calories, protein, carbs, and fat. Return ONLY a JSON object (no markdown, no backticks) with these keys: dishName, calories (number), protein (string with unit), carbs (string with unit), fat (string with unit), healthyTips (short string). Example: {\"dishName\": \"Burger\", \"calories\": 500, \"protein\": \"20g\", \"carbs\": \"40g\", \"fat\": \"25g\", \"healthyTips\": \"Add more greens.\"}";
 
-                const prompt = "Analyze this image of food. Identify the dish and estimate the calories, protein, carbs, and fat. Return ONLY a JSON object (no markdown, no backticks) with these keys: dishName, calories (number), protein (string with unit), carbs (string with unit), fat (string with unit), healthyTips (short string).";
+                let response;
+                const modelsToTry = [
+                    "gemini-flash-latest",
+                    "gemini-2.0-flash",
+                    "gemini-2.0-flash-lite",
+                    "gemini-2.5-flash",
+                    "gemini-1.5-flash"
+                ];
 
-                const result = await model.generateContent([
-                    prompt,
-                    {
-                        inlineData: {
-                            data: base64Data,
-                            mimeType: image.type,
-                        },
-                    },
-                ]);
+                let lastError = null;
 
-                const response = await result.response;
+                for (const modelName of modelsToTry) {
+                    try {
+                        console.log(`Intentando con modelo: ${modelName}...`);
+                        const model = genAI.getGenerativeModel({ model: modelName });
+                        const result = await model.generateContent([
+                            prompt,
+                            { inlineData: { data: base64Data, mimeType: image.type } }
+                        ]);
+                        response = await result.response;
+                        console.log(`✅ Éxito con ${modelName}`);
+                        break;
+                    } catch (err) {
+                        lastError = err;
+                        console.warn(`❌ Falló ${modelName}:`, err.message);
+
+                        if (err.message?.includes("429") || err.message?.includes("quota")) {
+                            // Si el límite es 0, probamos el siguiente modelo por si acaso uno tiene cuota y otro no
+                            if (err.message?.includes("limit: 0")) {
+                                continue;
+                            }
+                            throw err;
+                        }
+
+                        if (err.message?.includes("404") || err.message?.includes("not found")) {
+                            continue;
+                        }
+
+                        throw err;
+                    }
+                }
+
+                if (!response) {
+                    throw lastError || new Error("No se pudo conectar con ningún modelo de IA.");
+                }
+
                 const text = response.text();
-
-                // Clean up the response if it contains markdown code blocks
-                const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                // Limpieza profunda del JSON
+                const cleanedText = text
+                    .replace(/```json/g, '')
+                    .replace(/```/g, '')
+                    .replace(/`/g, '')
+                    .trim();
 
                 try {
                     const jsonResult = JSON.parse(cleanedText);
@@ -69,14 +118,72 @@ const AnalyzeView = () => {
             };
         } catch (err) {
             console.error("Error analyzing image:", err);
-            setError("Failed to analyze image. Please check your API key and try again.");
+
+            // Manejo específico de errores
+            let errorMessage = "Error al analizar la imagen. Por favor, intenta de nuevo.";
+
+            if (err.message?.includes("quota") || err.message?.includes("429")) {
+                errorMessage = "⚠️ Has excedido la cuota de tu API key. Por favor, espera unos minutos o usa una nueva API key de Google AI Studio.";
+            } else if (err.message?.includes("not found") || err.message?.includes("404")) {
+                errorMessage = "❌ El modelo gemini-1.5-flash no se encontró. Intentando con un modelo alternativo...";
+                console.warn("Model 1.5-flash not found, consider using another one or checking your API key status.");
+            } else if (err.message?.includes("rate limit") || err.message?.includes("Too Many Requests")) {
+                errorMessage = "⏸️ Demasiadas solicitudes. Por favor espera un momento antes de intentar de nuevo.";
+            } else if (err.message?.includes("API Key")) {
+                errorMessage = "🔑 API Key no válida. Por favor verifica tu configuración en el archivo .env";
+            } else if (err.message?.includes("network") || err.message?.includes("fetch")) {
+                errorMessage = "🌐 Error de conexión. Verifica tu conexión a internet.";
+            } else if (err.message?.includes("MIME type") || err.message?.includes("Unsupported")) {
+                errorMessage = "🖼️ El formato de esta imagen no es compatible con la IA. Prueba con una foto en JPG o PNG.";
+            }
+
+            setError(errorMessage);
             setLoading(false);
         }
     };
 
-    const handleAddToLog = () => {
-        alert(`Added ${result.dishName} to ${mealType} log!`);
-        // Here you would integrate with your global state/context to actually add the food
+    const handleAddToLog = async () => {
+        if (!result || !user) {
+            setError("No se pudo identificar al usuario o faltan datos del análisis.");
+            return;
+        }
+
+        setIsSaving(true);
+        setSaveSuccess(false);
+        const today = new Date().toISOString().split('T')[0];
+
+        try {
+            // Limpiar valores numéricos (quitar 'g' de proteínas, etc)
+            const getNum = (val) => {
+                if (typeof val === 'number') return val;
+                if (!val) return 0;
+                return parseFloat(val.replace(/[^\d.]/g, '')) || 0;
+            };
+
+            const { error: logError } = await supabase
+                .from('daily_logs')
+                .insert([{
+                    user_id: user.id,
+                    date: today,
+                    meal_type: mealType,
+                    food_name: result.dishName,
+                    calories: getNum(result.calories),
+                    protein: getNum(result.protein),
+                    carbs: getNum(result.carbs),
+                    fat: getNum(result.fat),
+                    healthy_tips: result.healthyTips
+                }]);
+
+            if (logError) throw logError;
+
+            setSaveSuccess(true);
+            setTimeout(() => setSaveSuccess(false), 3000);
+        } catch (err) {
+            console.error('Error saving to log:', err);
+            setError("Error al guardar en el historial. Inténtalo de nuevo.");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -91,7 +198,7 @@ const AnalyzeView = () => {
                     <label className={styles.uploadArea}>
                         <input
                             type="file"
-                            accept="image/*"
+                            accept=".jpg,.jpeg,.png,.webp"
                             onChange={handleImageUpload}
                             className={styles.fileInput}
                         />
@@ -175,8 +282,12 @@ const AnalyzeView = () => {
                                 <option value="snack">Snack</option>
                             </select>
                         </div>
-                        <button onClick={handleAddToLog} className={styles.addButton}>
-                            Add to Log
+                        <button
+                            onClick={handleAddToLog}
+                            className={`${styles.addButton} ${saveSuccess ? styles.success : ''}`}
+                            disabled={isSaving}
+                        >
+                            {isSaving ? 'Saving...' : saveSuccess ? '✓ Added' : 'Add to Log'}
                         </button>
                         <button onClick={() => { setImage(null); setPreviewUrl(null); setResult(null); }} className={styles.resetButton}>
                             Analyze Another

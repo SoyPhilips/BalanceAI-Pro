@@ -5,8 +5,8 @@ BalanceAI es una aplicación web moderna diseñada para el seguimiento nutricion
 ## Características Principales
 
 - Registro de alimentos con base de datos integrada.
-- Análisis de comidas mediante fotos utilizando Inteligencia Artificial.
-- Seguimiento en tiempo real de objetivos calóricos diarios.
+- Análisis de comidas mediante fotos utilizando Inteligencia Artificial con registro automático en el historial.
+- Seguimiento en tiempo real de objetivos calóricos diarios y macronutrientes.
 - Panel de control (Dashboard) con resumen de progreso y registro del día.
 - Sugerencias periódicas para mantener un estilo de vida saludable.
 - Sistema de perfil personalizable con objetivos dinámicos.
@@ -31,9 +31,9 @@ Antes de comenzar, asegúrate de tener instalado:
     ```env
     VITE_SUPABASE_URL=tu_url_de_supabase
     VITE_SUPABASE_ANON_KEY=tu_anon_key_de_supabase
-    VITE_GOOGLE_AI_KEY=tu_google_api_key
+    VITE_GOOGLE_API_KEY=tu_google_api_key
     ```
-    Nota: La funcionalidad de análisis por foto requiere que añadas tu clave de Google AI en la variable `VITE_GOOGLE_AI_KEY`.
+    Nota: La funcionalidad de análisis por foto requiere que añadas tu clave de Google AI en la variable `VITE_GOOGLE_API_KEY`.
 
 ## Ejecución del Proyecto
 
